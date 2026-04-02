@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>LiveTranslate Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Barlow+Condensed:wght@300;500;700&display=swap" rel="stylesheet"/>
+<style>
+/* ── Variables ─────────────────────────────────────────── */
+:root{
+  --bg:#080c0f;--surface:#0d1317;--surface-2:#111920;
+  --border:#1e2d36;--border-active:#2ef0a0;
+  --accent:#2ef0a0;--accent-dim:#1a8f60;--accent-glow:rgba(46,240,160,.18);
+  --warn:#f0a02e;--err:#f03c2e;
+  --text:#c8dde8;--text-dim:#4d6e7e;--text-bright:#e8f8ff;
+  --mono:'JetBrains Mono',monospace;--display:'Barlow Condensed',sans-serif;
+  --radius:3px;--tr:140ms ease;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:transparent;color:var(--text);
+  font-family:var(--mono);font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+
+#app{
+  width:100%;min-height:100vh;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:24px 16px 60px;
+}
+
+/* shortcut bar */
+#shortcut-bar{
+  position:fixed;bottom:0;left:0;right:0;
+  display:flex;gap:24px;justify-content:center;
+  padding:6px 16px;background:var(--surface);border-top:1px solid var(--border);
+  color:var(--text-dim);font-size:11px;letter-spacing:.04em;
+}
+kbd{
+  display:inline-block;padding:1px 5px;border:1px solid var(--border);
+  border-radius:2px;background:var(--surface-2);color:var(--accent);
+  font-family:var(--mono);font-size:10px;
+}
+
+/* panel */
+.panel{width:100%;max-width:460px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.panel-header{display:flex;align-items:baseline;gap:10px;padding:18px 20px 14px;border-bottom:1px solid var(--border)}
+.logo-mark{font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-bright)}
+.logo-mark span{color:var(--accent)}
+.version-tag{font-size:10px;color:var(--text-dim);letter-spacing:.1em;border:1px solid var(--border);padding:1px 6px;border-radius:20px;margin-left:auto}
+.panel-body{padding:20px;display:flex;flex-direction:column;gap:14px}
+
+/* status dot */
+.status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--text-dim);margin-right:6px;vertical-align:middle;transition:background var(--tr)}
+.status-dot.active{background:var(--accent);animation:pulse 1.6s ease-in-out infinite}
+.status-dot.err{background:var(--err)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+.field-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:2px}
+
+/* input toggle */
+.input-toggle{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.toggle-btn{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding:14px 10px;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:var(--radius);cursor:pointer;transition:border-color var(--tr),background var(--tr);
+  color:var(--text-dim);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;user-select:none
+}
+.toggle-btn:hover{border-color:var(--accent-dim);color:var(--text)}
+.toggle-btn.selected{border-color:var(--accent);background:var(--accent-glow);color:var(--accent)}
+.toggle-btn .icon{font-size:20px;line-height:1}
+
+/* text input */
+.text-input{
+  width:100%;padding:9px 12px;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:var(--radius);color:var(--text-bright);font-family:var(--mono);font-size:12px;outline:none;
+  transition:border-color var(--tr)
+}
+.text-input::placeholder{color:var(--text-dim)}
+.text-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-glow)}
+.text-input.err{border-color:var(--err)}
+
+/* selects */
+.lang-row{display:grid;grid-template-columns:1fr 28px 1fr;align-items:center;gap:6px}
+.lang-row .arrow{text-align:center;color:var(--text-dim);font-size:14px}
+.lang-select{
+  width:100%;padding:7px 10px;background:var(--surface-2);border:1px solid var(--border);
+  border-radius:var(--radius);color:var(--text-bright);font-family:var(--mono);font-size:11px;outline:none;cursor:pointer;
+  transition:border-color var(--tr)
+}
+.lang-select:focus{border-color:var(--accent)}
+
+/* buttons */
+.btn-primary{
+  width:100%;padding:12px;background:var(--accent);color:#040a07;
+  font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:.15em;text-transform:uppercase;
+  border:none;border-radius:var(--radius);cursor:pointer;transition:opacity var(--tr),transform var(--tr)
+}
+.btn-primary:hover{opacity:.88}
+.btn-primary:active{transform:scale(.98)}
+.btn-primary:disabled{opacity:.3;cursor:not-allowed;transform:none}
+
+.btn-ghost{
+  padding:8px 14px;background:transparent;color:var(--text-dim);font-family:var(--mono);font-size:11px;
+  letter-spacing:.06em;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;
+  transition:border-color var(--tr),color var(--tr)
+}
+.btn-ghost:hover{border-color:var(--accent-dim);color:var(--text-bright)}
+
+/* messages */
+.msg{font-size:11px;padding:7px 10px;border-radius:var(--radius);border-left:2px solid}
+.msg.err{border-color:var(--err);color:var(--err);background:rgba(240,60,46,.07)}
+.msg.info{border-color:var(--accent);color:var(--accent);background:var(--accent-glow)}
+.msg.warn{border-color:var(--warn);color:var(--warn);background:rgba(240,160,46,.07)}
+
+.divider{height:1px;background:var(--border);margin:2px 0}
+
+.source-info{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-dim)}
+
+.nav-sign{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-dim);letter-spacing:.06em}
+.nav-sign a{color:var(--accent-dim);text-decoration:none;cursor:pointer;transition:color var(--tr)}
+.nav-sign a:hover{color:var(--accent)}
+
+/* webcam */
+.webcam-wrapper{
+  position:relative;width:100%;aspect-ratio:4/3;
+  background:#000;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden
+}
+#webcam-feed{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+.webcam-overlay{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  background:rgba(8,12,15,.75);font-size:12px;color:var(--text-dim);letter-spacing:.06em;
+  transition:opacity var(--tr)
+}
+.webcam-overlay.hidden{opacity:0;pointer-events:none}
+.webcam-wrapper::before,.webcam-wrapper::after{
+  content:'';position:absolute;width:16px;height:16px;
+  border-color:var(--accent);border-style:solid;border-width:0;z-index:2;
+  transition:opacity var(--tr);opacity:0
+}
+.webcam-wrapper.active::before,.webcam-wrapper.active::after{opacity:1}
+.webcam-wrapper::before{top:6px;left:6px;border-top-width:1px;border-left-width:1px}
+.webcam-wrapper::after{bottom:6px;right:6px;border-bottom-width:1px;border-right-width:1px}
+
+.capture-controls{display:flex;gap:8px}
+.btn-capture{
+  flex:1;padding:11px;font-family:var(--display);font-weight:700;font-size:14px;
+  letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--border);
+  border-radius:var(--radius);cursor:pointer;transition:all var(--tr)
+}
+.btn-capture.start{background:var(--accent);color:#040a07;border-color:var(--accent)}
+.btn-capture.start:hover{opacity:.85}
+.btn-capture.stop{background:transparent;color:var(--err);border-color:var(--err)}
+.btn-capture.stop:hover{background:rgba(240,60,46,.1)}
+.btn-capture:active{transform:scale(.98)}
+
+.recognition-output{
+  background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);
+  padding:10px 12px;font-size:11px;color:var(--text-dim);min-height:48px;
+  letter-spacing:.04em;line-height:1.6
+}
+.recognition-output .placeholder{font-style:italic}
+
+.stats-bar{display:flex;gap:16px;font-size:10px;color:var(--text-dim);letter-spacing:.08em}
+.stat-val{color:var(--accent)}
+
+/* page transition */
+.page-enter{animation:fadeSlideIn 160ms ease both}
+@keyframes fadeSlideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:var(--surface)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<div id="shortcut-bar">
+  <span><kbd>Space</kbd> Start / Stop</span>
+  <span><kbd>M</kbd> Mic &nbsp; <kbd>U</kbd> URL &nbsp; <kbd>S</kbd> Sign</span>
+  <span><kbd>Esc</kbd> Home</span>
+</div>
+
+<script type="module">
+/* ─────────────────────────────────────────────────────────────
+   Inline modules (equivalent to the separate js/ files)
+   Inlined only for single-file preview; production uses modules.
+   ───────────────────────────────────────────────────────────── */
+
+// ── router ──────────────────────────────────────────────────
+const routes = new Map();
+let currentUnmount = null;
+
+function registerRoute(path, loader) { routes.set(path, loader); }
+
+function navigate(path) { window.location.hash = path; }
+
+async function render() {
+  const hash = window.location.hash.slice(1) || '/';
+  const loader = routes.get(hash);
+  const app = document.getElementById('app');
+
+  if (currentUnmount) { currentUnmount(); currentUnmount = null; }
+
+  if (!loader) {
+    app.innerHTML = `<p style="color:var(--text-dim);font-size:12px">404 — not found: ${hash}</p>`;
+    return;
+  }
+
+  const page = await loader();
+  app.innerHTML = '';
+  app.classList.remove('page-enter');
+  void app.offsetWidth; // force reflow for animation reset
+  app.classList.add('page-enter');
+  page.mount(app);
+  currentUnmount = page.unmount ?? null;
+}
+
+window.addEventListener('hashchange', render);
+
+// ── shared DOM helper ────────────────────────────────────────
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'className') node.className = v;
+    else node[k] = v;
+  }
+  for (const child of children) {
+    if (child == null) continue;
+    node.append(typeof child === 'string' ? document.createTextNode(child) : child);
+  }
+  return node;
+}
+
+function mkListeners() {
+  const list = [];
+  function add(target, event, handler) {
+    target.addEventListener(event, handler);
+    list.push({ target, event, handler });
+  }
+  function removeAll() {
+    list.forEach(({ target, event, handler }) => target.removeEventListener(event, handler));
+    list.length = 0;
+  }
+  return { add, removeAll };
+}
+
+// ── home page ────────────────────────────────────────────────
+const LANGUAGES = [
+  { code:'auto', label:'Auto-detect' },
+  { code:'en',   label:'English' },
+  { code:'es',   label:'Spanish' },
+  { code:'fr',   label:'French' },
+  { code:'de',   label:'German' },
+  { code:'zh',   label:'Chinese' },
+  { code:'ar',   label:'Arabic' },
+  { code:'hi',   label:'Hindi' },
+  { code:'ja',   label:'Japanese' },
+  { code:'pt',   label:'Portuguese' },
+  { code:'ru',   label:'Russian' },
+];
+
+function homePage() {
+  const { add, removeAll } = mkListeners();
+  const state = { inputType:'mic', url:'', sourceLang:'auto', targetLang:'en' };
+
+  function mount(root) {
+    // Error display
+    const errorMsg = el('p', { className:'msg err', hidden:true });
+
+    // Input type toggles
+    const micBtn = el('button', { className:'toggle-btn selected', type:'button' },
+      el('span', { className:'icon' }, '🎙'), 'Microphone');
+    const urlBtn = el('button', { className:'toggle-btn', type:'button' },
+      el('span', { className:'icon' }, '🔗'), 'Stream URL');
+
+    function selectType(type) {
+      state.inputType = type;
+      micBtn.className = 'toggle-btn' + (type==='mic' ? ' selected' : '');
+      urlBtn.className = 'toggle-btn' + (type==='url' ? ' selected' : '');
+      urlField.hidden = type !== 'url';
+      micHint.hidden  = type !== 'mic';
+      clearErr();
+    }
+    add(micBtn, 'click', () => selectType('mic'));
+    add(urlBtn, 'click', () => selectType('url'));
+
+    // URL field
+    const urlInput = el('input', {
+      type:'text', className:'text-input',
+      placeholder:'https://example.com/stream.m3u8',
+      autocomplete:'off', spellcheck:false
+    });
+    add(urlInput, 'input', e => { state.url = e.target.value; clearErr(); });
+    const urlField = el('div', { hidden:true },
+      el('p', { className:'field-label' }, 'Stream / Video URL'), urlInput);
+
+    // Mic hint
+    const micHint = el('p', { className:'source-info' },
+      el('span', { className:'status-dot' }),
+      'Microphone access will be requested on start.');
+
+    // Language selectors
+    function buildSelect(id, selected) {
+      const s = el('select', { id, className:'lang-select' });
+      LANGUAGES.forEach(l => {
+        const o = el('option', { value:l.code }, l.label);
+        if (l.code === selected) o.selected = true;
+        s.append(o);
+      });
+      return s;
+    }
+    const srcSel = buildSelect('src-lang', state.sourceLang);
+    const tgtSel = buildSelect('tgt-lang', state.targetLang);
+    add(srcSel, 'change', e => state.sourceLang = e.target.value);
+    add(tgtSel, 'change', e => state.targetLang = e.target.value);
+
+    // Start button
+    const startBtn = el('button', { className:'btn-primary', type:'button' }, 'Start Translating');
+    add(startBtn, 'click', handleStart);
+
+    // Sign nav
+    const signLink = el('a', {}, 'Sign Language Mode →');
+    add(signLink, 'click', () => navigate('/sign'));
+    const signNav = el('div', { className:'nav-sign' }, '⌥ ', signLink);
+
+    // Panel
+    root.append(el('div', { className:'panel' },
+      el('div', { className:'panel-header' },
+        el('span', { className:'logo-mark' }, 'Live', el('span', {}, 'Translate')),
+        el('span', { className:'version-tag' }, 'MVP v0.1')),
+      el('div', { className:'panel-body' },
+        el('p', { className:'field-label' }, 'Input Source'),
+        el('div', { className:'input-toggle' }, micBtn, urlBtn),
+        urlField, micHint,
+        el('div', { className:'divider' }),
+        el('p', { className:'field-label' }, 'Languages'),
+        el('div', { className:'lang-row' },
+          srcSel, el('span', { className:'arrow' }, '→'), tgtSel),
+        errorMsg, startBtn, signNav)));
+
+    // Keyboard shortcuts for this page
+    add(document, 'app:shortcut', e => {
+      switch(e.detail) {
+        case ' ': handleStart(); break;
+        case 'm': selectType('mic'); break;
+        case 'u': selectType('url'); urlInput.focus(); break;
+      }
+    });
+
+    function clearErr() {
+      errorMsg.hidden = true;
+      urlInput.classList.remove('err');
+    }
+
+    function validate() {
+      if (state.inputType === 'url') {
+        if (!state.url.trim()) return 'Please enter a stream or video URL.';
+        try { new URL(state.url.trim()); } catch { return 'URL appears invalid — include http:// or https://'; }
+      }
+      if (state.sourceLang === state.targetLang && state.sourceLang !== 'auto')
+        return 'Source and target language must differ.';
+      return null;
+    }
+
+    function handleStart() {
+      const err = validate();
+      if (err) {
+        errorMsg.textContent = err;
+        errorMsg.hidden = false;
+        if (state.inputType === 'url') urlInput.classList.add('err');
+        return;
+      }
+      // ── Backend integration point ──────────────────────────────
+      // Call your translation service adapter here, e.g.:
+      //   TranslationService.start({ type: state.inputType, url: state.url,
+      //                              from: state.sourceLang, to: state.targetLang });
+      //   navigate('/translating');
+      // ──────────────────────────────────────────────────────────
+      const src = state.inputType === 'mic' ? 'Microphone' : state.url;
+      alert(`[MVP stub]\nWould begin translating\nSource: ${src}\nFrom: ${state.sourceLang} → To: ${state.targetLang}`);
+    }
+  }
+
+  function unmount() { removeAll(); }
+  return { mount, unmount };
+}
+
+// ── sign language page ───────────────────────────────────────
+function signPage() {
+  const { add, removeAll } = mkListeners();
+  let stream = null;
+  let statsInterval = null;
+  let capturing = false;
+
+  function mount(root) {
+    // Camera elements
+    const video        = el('video', { id:'webcam-feed', autoplay:true, muted:true, playsinline:true });
+    const overlayText  = document.createTextNode('⬡  Camera Off');
+    const overlay      = el('div', { className:'webcam-overlay' }, overlayText);
+    const camWrap      = el('div', { className:'webcam-wrapper' }, video, overlay);
+
+    const captureBtn   = el('button', { className:'btn-capture start', type:'button' }, '▶  Start Capture');
+    const statusMsg    = el('p', { className:'msg err', hidden:true });
+
+    // Recognition output
+    const recBox = el('div', { className:'recognition-output' },
+      el('span', { className:'placeholder' }, 'Sign language output will appear here…'));
+
+    // Stats
+    const dot    = el('span', { className:'status-dot' });
+    const fpsVal = el('span', { className:'stat-val' }, '—');
+    const stats  = el('div', { className:'stats-bar' },
+      dot, el('span', {}, 'FPS '), fpsVal,
+      el('span', { style:'margin-left:12px' }, 'Backend '),
+      el('span', { className:'stat-val' }, 'not connected'));
+
+    // Back button
+    const backBtn = el('button', { className:'btn-ghost' }, '← Back');
+    add(backBtn, 'click', () => navigate('/'));
+
+    root.append(el('div', { className:'panel' },
+      el('div', { className:'panel-header' },
+        el('span', { className:'logo-mark' }, '✋ Sign', el('span', {}, ' Mode')),
+        el('span', { className:'version-tag' }, 'MVP v0.1')),
+      el('div', { className:'panel-body' },
+        camWrap, statusMsg,
+        el('div', { className:'capture-controls' }, captureBtn, backBtn),
+        el('p', { className:'field-label', style:'margin-top:4px' }, 'Recognition Output'),
+        recBox, stats)));
+
+    add(captureBtn, 'click', toggle);
+    add(document, 'app:shortcut', e => { if (e.detail === ' ') toggle(); });
+
+    async function startCam() {
+      statusMsg.hidden = true;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width:{ideal:640}, height:{ideal:480}, facingMode:'user' },
+          audio: false
+        });
+        video.srcObject = stream;
+        capturing = true;
+        camWrap.classList.add('active');
+        overlay.classList.add('hidden');
+        captureBtn.className = 'btn-capture stop';
+        captureBtn.textContent = '■  Stop Capture';
+        dot.className = 'status-dot active';
+
+        // 1 Hz poll — avoids 60fps rAF overhead for a simple counter
+        statsInterval = setInterval(() => {
+          fpsVal.textContent = stream?.active ? '~30' : '—';
+          // ── Backend integration point ───────────────────────────
+          // Capture frame: offscreenCanvas.drawImage(video,0,0)
+          // Send to WebSocket / REST for sign recognition
+          // Update recBox.textContent with result
+          // ──────────────────────────────────────────────────────
+        }, 1000);
+
+      } catch(err) {
+        const msg = err.name === 'NotAllowedError'
+          ? 'Camera permission denied. Allow access and try again.'
+          : `Camera error: ${err.message}`;
+        statusMsg.textContent = msg;
+        statusMsg.hidden = false;
+      }
+    }
+
+    function stopCam() {
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+      video.srcObject = null;
+      capturing = false;
+      camWrap.classList.remove('active');
+      overlay.classList.remove('hidden');
+      overlayText.textContent = '⬡  Camera Off';
+      captureBtn.className = 'btn-capture start';
+      captureBtn.textContent = '▶  Start Capture';
+      dot.className = 'status-dot';
+      fpsVal.textContent = '—';
+      clearInterval(statsInterval); statsInterval = null;
+    }
+
+    function toggle() { capturing ? stopCam() : startCam(); }
+  }
+
+  function unmount() {
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    clearInterval(statsInterval);
+    removeAll();
+  }
+
+  return { mount, unmount };
+}
+
+// ── keyboard shortcuts ───────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  switch(e.key.toLowerCase()) {
+    case 'escape': navigate('/'); break;
+    case 's':      navigate('/sign'); break;
+    case ' ':
+    case 'm':
+    case 'u':
+      document.dispatchEvent(new CustomEvent('app:shortcut', { detail: e.key.toLowerCase() }));
+      e.preventDefault();
+      break;
+  }
+});
+
+// ── boot ─────────────────────────────────────────────────────
+registerRoute('/',     () => Promise.resolve(homePage()));
+registerRoute('/sign', () => Promise.resolve(signPage()));
+render();
+</script>
+</body>
+</html>

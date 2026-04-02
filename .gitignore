@@ -1,0 +1,13 @@
+# Model cache (IMPORTANT)
+#.model_cache/
+stt_module/.model_cache/
+
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+.venv/
+
+#Node modueles v24.
+live-translate-overlay/node_modules/

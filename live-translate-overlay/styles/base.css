@@ -1,0 +1,264 @@
+/* ============================================================
+   base.css — Global reset, CSS variables, overlay theme
+   Performance note: CSS variables centralise theming so no
+   JS colour logic is needed; reduces style recalculations.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Barlow+Condensed:wght@300;500;700&display=swap');
+
+/* --- Variables -------------------------------------------- */
+:root {
+  --bg:           #080c0f;
+  --surface:      #0d1317;
+  --surface-2:    #111920;
+  --border:       #1e2d36;
+  --border-active:#2ef0a0;
+  --accent:       #2ef0a0;    /* signal green */
+  --accent-dim:   #1a8f60;
+  --accent-glow:  rgba(46,240,160,0.18);
+  --warn:         #f0a02e;
+  --err:          #f03c2e;
+  --text:         #c8dde8;
+  --text-dim:     #4d6e7e;
+  --text-bright:  #e8f8ff;
+  --mono:         'JetBrains Mono', monospace;
+  --display:      'Barlow Condensed', sans-serif;
+  --radius:       3px;
+  --transition:   140ms ease;
+}
+
+/* --- Reset ------------------------------------------------- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  /* Transparent root for overlay-window support */
+  background: transparent;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px 64px; /* room for shortcut-bar */
+}
+
+/* --- Shortcut bar ----------------------------------------- */
+#shortcut-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  padding: 6px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  /* Performance: will-change only on elements that animate */
+}
+
+kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--surface-2);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+/* --- Shared panel ----------------------------------------- */
+.panel {
+  width: 100%;
+  max-width: 480px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-header .logo-mark {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-bright);
+}
+
+.panel-header .logo-mark span {
+  color: var(--accent);
+}
+
+.panel-header .version-tag {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 20px;
+  margin-left: auto;
+}
+
+.panel-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* --- Status indicator -------------------------------------- */
+.status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  margin-right: 6px;
+  vertical-align: middle;
+  transition: background var(--transition);
+}
+.status-dot.active {
+  background: var(--accent);
+  /* CSS-only pulse — no JS animation frame needed */
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.status-dot.warn  { background: var(--warn); }
+.status-dot.err   { background: var(--err); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* --- Label ------------------------------------------------ */
+.field-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+/* --- Text input ------------------------------------------- */
+.text-input {
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-bright);
+  font-family: var(--mono);
+  font-size: 12px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+.text-input::placeholder { color: var(--text-dim); }
+.text-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+.text-input.err { border-color: var(--err); }
+
+/* --- Primary button --------------------------------------- */
+.btn-primary {
+  width: 100%;
+  padding: 12px;
+  background: var(--accent);
+  color: #040a07;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: opacity var(--transition), transform var(--transition);
+  /* Promote to own compositor layer only during interaction */
+}
+.btn-primary:hover       { opacity: 0.88; }
+.btn-primary:active      { transform: scale(0.98); }
+.btn-primary:disabled    {
+  opacity: 0.3;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* --- Secondary / ghost button ----------------------------- */
+.btn-ghost {
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.btn-ghost:hover {
+  border-color: var(--accent-dim);
+  color: var(--text-bright);
+}
+
+/* --- Error / info message --------------------------------- */
+.msg {
+  font-size: 11px;
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  border-left: 2px solid;
+}
+.msg.err  { border-color: var(--err);  color: var(--err);  background: rgba(240,60,46,0.07); }
+.msg.info { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+.msg.warn { border-color: var(--warn); color: var(--warn); background: rgba(240,160,46,0.07); }
+
+/* --- Divider ---------------------------------------------- */
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* --- Page transition (CSS only — no JS animation lib) ----- */
+.page-enter {
+  animation: fadeSlideIn 160ms ease both;
+}
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Scrollbar -------------------------------------------- */
+::-webkit-scrollbar       { width: 4px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }

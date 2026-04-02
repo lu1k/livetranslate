@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LiveTranslate Overlay</title>
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/home.css" />
+  <link rel="stylesheet" href="styles/sign.css" />
+</head>
+<body>
+  <!-- Single root: all pages are rendered here via lightweight router -->
+  <div id="app">
+    <!-- Pages injected by router.js -->
+  </div>
+
+  <!-- Keyboard shortcut hint bar -->
+  <div id="shortcut-bar" aria-label="Keyboard shortcuts">
+    <span><kbd>Space</kbd> Start / Stop</span>
+    <span><kbd>M</kbd> Mic&nbsp;&nbsp;<kbd>U</kbd> URL&nbsp;&nbsp;<kbd>S</kbd> Sign</span>
+    <span><kbd>Esc</kbd> Home</span>
+  </div>
+
+  <!-- Window controls: drag bar + minimize/close buttons (Electron only) -->
+  <!-- No-op in browser: script checks for window.electronAPI before acting -->
+  <script src="electron/window-controls.js"></script>
+
+  <!-- Entry point — type="module" defers automatically -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

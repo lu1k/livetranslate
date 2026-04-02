@@ -1,0 +1,52 @@
+# ──────────────────────────────────────────────────────────────
+# Real-Time Malayalam ↔ English Translator — requirements.txt
+# ──────────────────────────────────────────────────────────────
+# Install with:
+#   pip install -r requirements.txt
+#
+# For NVIDIA GPU acceleration also run:
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# ──────────────────────────────────────────────────────────────
+
+# ── Core audio ─────────────────────────────────────────────────
+sounddevice>=0.4.6
+numpy>=1.24.0
+
+# ── PyTorch (CPU build — swap for CUDA build if you have a GPU) ──
+# CPU:
+torch>=2.1.0
+# For CUDA, replace the above with the wheel from pytorch.org
+
+# ── Silero VAD (loaded via torch.hub, no explicit package needed) ──
+# silero-vad is not on PyPI; torch.hub handles it automatically.
+# Nothing to list here — torch.hub will download on first run.
+
+# ── Speech-to-Text ─────────────────────────────────────────────
+faster-whisper>=1.0.0      # CTranslate2-based Whisper
+
+# ── Translation (en → ml secondary hop) ────────────────────────
+deep-translator>=1.11.4    # free Google Translate wrapper (fallback)
+# Optional: full MarianMT offline translation
+# transformers>=4.40.0
+# sentencepiece>=0.1.99    # required by MarianMT tokeniser
+
+# ── Sign language / vision ─────────────────────────────────────
+opencv-python>=4.9.0
+mediapipe>=0.10.9
+
+# ── Utilities ──────────────────────────────────────────────────
+Pillow>=10.0.0             # Indic font rendering (PIL)
+
+# ── Optional: keyboard listener ────────────────────────────────
+pynput>=1.7.6              # non-blocking hotkey support
+
+# ── Optional: TTS ──────────────────────────────────────────────
+# gTTS>=2.5.0              # Google TTS (requires internet)
+# pyttsx3>=2.90            # offline TTS
+
+# ── Optional: Keras model for sign language ────────────────────
+# tensorflow>=2.15.0       # only if you have a .h5 sign model
+# keras>=2.15.0
+
+# ── Dev / testing ──────────────────────────────────────────────
+scipy>=1.12.0              # WAV file I/O for unit tests
