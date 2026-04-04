@@ -1,7 +1,30 @@
-from audio_mod import AudioStream
+from audio_01 import AudioStream
+import soundfile as sf 
+import queue 
+import numpy as np
+'''
+This is a sample program to record from mic and save it to a wav file.
+'''
+
+sr = 16000
+FILENAME = 'wav01.wav'
+
+
+file = sf.SoundFile(
+    FILENAME,
+    mode='w',
+    samplerate=sr,
+    channels=1,
+    subtype='PCM_16'
+)
 
 def process(audio, sr):
-    print("Audio chunk:", len(audio), "Sample rate:", sr)
+    if audio.ndim == 1:
+        audio = audio.reshape(-1, 1)
+
+    # Write directly to disk
+    file.write(audio)
+
     return audio
 
 stream = AudioStream(
@@ -10,9 +33,8 @@ stream = AudioStream(
     processor=process
 )
 
-#stream.on_audio = lambda data: print("Processed:", len(data))
-
 stream.start()
-
 input("Press Enter to stop...")
 stream.stop()
+
+file.close()
