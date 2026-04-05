@@ -17,7 +17,7 @@ The motivation behind the LIVE TRANSLATE project comes from this gap. There is n
 
 | Category	|	Tool / Technology 	|	Description |
 | :------------ | :-----------| :---------- |
-| Programming   	|	JavaScript 			| Used for implementing client-side application logic, real-time communication handling, and interactive user interface behavior. |
+| Programming   	|	Python 			| Used for implementing client-side application logic, real-time communication handling, and interactive user interface behavior. |
 | Libraries / 		 | React.js		|	A JavaScript library used to develop a modular, component-based web user interface with efficient state management. |
 | Libraries / Frameworks | Flutter (Optional) | A cross-platform UI framework used to build mobile applications from a single codebase. 
 | Libraries / Frameworks | React Native (Optional) | Used for developing native mobile applications using JavaScript and React principles. 
