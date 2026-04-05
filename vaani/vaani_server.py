@@ -1,21 +1,26 @@
 """
 vaani_server.py — WebSocket bridge for VAANI
 =============================================
-Wraps your existing STT script (which prints transcripts to stdout)
-inside a WebSocket server that VAANI's Electron frontend connects to.
+Manages two independent subprocesses:
+  • STT  — speech-to-text  (started by "start_speech" from Electron)
+  • ISL  — sign-language   (started by "start_isl"    from Electron)
+
+Both scripts communicate via stdout: print one result per line, flushed.
+
+STT  stdout format:  plain text transcript
+    "Hello how are you"
+
+ISL  stdout format:  WORD|Description   (pipe-separated)
+    "HELLO|Right hand raised to forehead, palm outward, sweeps forward."
+    "WATER|Both hands form a W shape and tap the chin twice."
+
+If your ISL script only prints plain text (no pipe), the whole line
+is shown in the description column with no word label — also fine.
 
 Usage:
     python vaani_server.py
 
-Then in the VAANI app set the endpoint to:  ws://localhost:8000/ws
-
-How it works:
-    1. Electron connects and sends  { "type": "start_speech" }
-    2. This server spawns your STT script as a subprocess
-    3. Every line your STT script prints to stdout is forwarded to
-       Electron as  { "type": "speech_transcript", "text": "..." }
-    4. When Electron sends { "type": "stop_speech" } the subprocess
-       is terminated cleanly
+Then in VAANI set endpoint to:  ws://localhost:8000/ws
 
 Requirements:
     pip install websockets
@@ -25,8 +30,6 @@ import asyncio
 import json
 import logging
 import subprocess
-import sys
-from pathlib import Path
 
 import websockets
 from websockets.server import WebSocketServerProtocol
@@ -36,12 +39,11 @@ from websockets.server import WebSocketServerProtocol
 HOST = "localhost"
 PORT = 8000
 
-# ❶  Point this at your STT script / command.
-#    Examples:
-#      STT_COMMAND = ["python", "stt.py"]
-#      STT_COMMAND = ["python", "/absolute/path/to/stt.py"]
-#      STT_COMMAND = ["python", "-u", "stt.py"]   # -u = unbuffered (recommended)
+# ❶ Point at your STT script
 STT_COMMAND = ["python", "-u", "stt.py"]
+
+# ❷ Point at your ISL script
+ISL_COMMAND = ["python", "-u", "isl.py"]
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 
@@ -52,15 +54,96 @@ logging.basicConfig(
 )
 log = logging.getLogger("vaani")
 
-# ── Per-connection state ───────────────────────────────────────────────────────
+# ── Generic subprocess wrapper ─────────────────────────────────────────────────
+
+class ManagedProcess:
+    """
+    Spawns a subprocess, reads its stdout line-by-line in a background
+    asyncio task, and calls on_line(line) for each non-empty line.
+    """
+
+    def __init__(self, name: str, command: list, on_line):
+        self.name      = name
+        self.command   = command
+        self.on_line   = on_line          # async callback(line: str)
+        self._proc     = None
+        self._task     = None
+
+    # ── lifecycle ──────────────────────────────────────────────────────────────
+
+    def start(self):
+        if self._proc and self._proc.poll() is None:
+            log.warning("[%s] already running — ignoring start", self.name)
+            return
+        log.info("[%s] spawning: %s", self.name, " ".join(self.command))
+        self._proc = subprocess.Popen(
+            self.command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,                    # line-buffered
+        )
+        self._task = asyncio.create_task(self._read_loop())
+
+    def stop(self):
+        self._cancel_task()
+        if self._proc and self._proc.poll() is None:
+            log.info("[%s] terminating (pid=%d)", self.name, self._proc.pid)
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+        self._proc = None
+
+    async def stop_async(self):
+        """Cancel reader task and wait for it before stopping process."""
+        self._cancel_task()
+        if self._task:
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
+        self.stop()
+
+    @property
+    def running(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
+
+    # ── internal ───────────────────────────────────────────────────────────────
+
+    def _cancel_task(self):
+        if self._task and not self._task.done():
+            self._task.cancel()
+
+    async def _read_loop(self):
+        loop = asyncio.get_event_loop()
+        while self._proc and self._proc.poll() is None:
+            try:
+                line = await loop.run_in_executor(None, self._proc.stdout.readline)
+            except Exception as exc:
+                log.error("[%s] stdout read error: %s", self.name, exc)
+                break
+            if not line:
+                break                     # EOF — process ended
+            text = line.rstrip("\n").strip()
+            if text:
+                await self.on_line(text)
+
+        if self._proc:
+            log.info("[%s] process exited (rc=%s)", self.name, self._proc.poll())
+            self._proc = None
+
+# ── Session ────────────────────────────────────────────────────────────────────
 
 class Session:
     def __init__(self, ws: WebSocketServerProtocol):
-        self.ws = ws
-        self.stt_proc: subprocess.Popen | None = None
-        self.reader_task: asyncio.Task | None = None
+        self.ws  = ws
+        self.stt = ManagedProcess("STT", STT_COMMAND, self._on_stt_line)
+        self.isl = ManagedProcess("ISL", ISL_COMMAND, self._on_isl_line)
 
-    # ── helpers ────────────────────────────────────────────────────────────────
+    # ── send helpers ───────────────────────────────────────────────────────────
 
     async def send(self, obj: dict):
         try:
@@ -71,94 +154,78 @@ class Session:
     async def send_status(self, module: str, status: str):
         await self.send({"type": f"{module}_status", "status": status})
 
-    # ── STT subprocess ─────────────────────────────────────────────────────────
+    # ── STT stdout callback ────────────────────────────────────────────────────
 
-    def start_stt(self):
-        """Spawn the STT subprocess."""
-        if self.stt_proc and self.stt_proc.poll() is None:
-            log.warning("STT already running — ignoring start request")
-            return
-
-        log.info("Spawning STT: %s", " ".join(STT_COMMAND))
-        self.stt_proc = subprocess.Popen(
-            STT_COMMAND,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,          # line-buffered
-        )
-
-    def stop_stt(self):
-        """Terminate the STT subprocess if running."""
-        if self.stt_proc and self.stt_proc.poll() is None:
-            log.info("Terminating STT subprocess (pid=%d)", self.stt_proc.pid)
-            self.stt_proc.terminate()
-            try:
-                self.stt_proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                self.stt_proc.kill()
-        self.stt_proc = None
-
-    # ── Async stdout reader ────────────────────────────────────────────────────
-
-    async def _read_stdout(self):
+    async def _on_stt_line(self, line: str):
         """
-        Read lines from the STT process stdout and forward each one
-        to the Electron frontend as a speech_transcript message.
-
-        Your STT script should print one transcript per line, e.g.:
-            print("Hello world", flush=True)
+        Called for every line your STT script prints.
+        Forwards it to Electron as a speech_transcript message.
         """
-        loop = asyncio.get_event_loop()
-
-        while self.stt_proc and self.stt_proc.poll() is None:
-            try:
-                # Read a line without blocking the event loop
-                line = await loop.run_in_executor(
-                    None, self.stt_proc.stdout.readline
-                )
-            except Exception as exc:
-                log.error("stdout read error: %s", exc)
-                break
-
-            if not line:
-                break                       # EOF — process ended
-
-            text = line.rstrip("\n").strip()
-            if text:
-                log.info("Transcript → Electron: %r", text)
-                await self.send({
-                    "type": "speech_transcript",
-                    "text": text,
-                })
-
-        # Process ended on its own
-        if self.stt_proc:
-            log.info("STT process exited (rc=%s)", self.stt_proc.returncode)
-            self.stt_proc = None
+        log.info("[STT] → %r", line)
+        await self.send({"type": "speech_transcript", "text": line})
+        if not self.stt.running:
             await self.send_status("speech", "idle")
 
-    async def start_reading(self):
-        """Start the background task that reads STT stdout."""
-        if self.reader_task and not self.reader_task.done():
-            self.reader_task.cancel()
-        self.reader_task = asyncio.create_task(self._read_stdout())
+    # ── ISL stdout callback ────────────────────────────────────────────────────
 
-    async def stop_reading(self):
-        if self.reader_task:
-            self.reader_task.cancel()
-            try:
-                await self.reader_task
-            except asyncio.CancelledError:
-                pass
-            self.reader_task = None
+    async def _on_isl_line(self, line: str):
+        """
+        Called for every line your ISL script prints.
 
-    # ── Cleanup ────────────────────────────────────────────────────────────────
+        Expected format — pipe-separated:
+            WORD|Description of the ISL gesture
+
+        Examples:
+            HELLO|Right hand raised to forehead, palm outward, sweeps forward.
+            WATER|Both hands form a W shape and tap the chin twice.
+            PLEASE|Right hand flat against chest, moves in a circular motion.
+
+        If your script prints plain text with no pipe separator, the full
+        line becomes the description and the word label is left empty.
+        """
+        log.info("[ISL] → %r", line)
+
+        if "|" in line:
+            word, _, description = line.partition("|")
+            word        = word.strip()
+            description = description.strip()
+        else:
+            # Plain text fallback — no word label
+            word        = ""
+            description = line.strip()
+
+        await self.send({
+            "type":        "isl_signs",
+            "word":        word,
+            "description": description,
+        })
+
+        if not self.isl.running:
+            await self.send_status("isl", "idle")
+
+    # ── command handlers ───────────────────────────────────────────────────────
+
+    async def handle_start_speech(self):
+        self.stt.start()
+        await self.send_status("speech", "running")
+
+    async def handle_stop_speech(self):
+        await self.stt.stop_async()
+        await self.send_status("speech", "idle")
+
+    async def handle_start_isl(self):
+        self.isl.start()
+        await self.send_status("isl", "running")
+
+    async def handle_stop_isl(self):
+        await self.isl.stop_async()
+        await self.send_status("isl", "idle")
+
+    # ── cleanup ────────────────────────────────────────────────────────────────
 
     async def cleanup(self):
-        await self.stop_reading()
-        self.stop_stt()
-
+        await self.stt.stop_async()
+        await self.isl.stop_async()
 
 # ── WebSocket handler ──────────────────────────────────────────────────────────
 
@@ -172,58 +239,36 @@ async def handle(ws: WebSocketServerProtocol):
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
-                log.warning("Non-JSON message received: %r", raw)
+                log.warning("Non-JSON message: %r", raw)
                 continue
 
-            msg_type = msg.get("type", "")
-            log.info("← %s", msg_type)
+            t = msg.get("type", "")
+            log.info("← %s", t)
 
-            # ── Speech commands ──────────────────────────────────────────────
-
-            if msg_type == "start_speech":
-                session.start_stt()
-                await session.start_reading()
-                await session.send_status("speech", "running")
-
-            elif msg_type == "stop_speech":
-                await session.stop_reading()
-                session.stop_stt()
-                await session.send_status("speech", "idle")
-
-            # ── ISL commands (hook in your ISL logic here) ───────────────────
-
-            elif msg_type == "start_isl":
-                # TODO: start your ISL translation process here
-                # For now, just acknowledge
-                await session.send_status("isl", "running")
-                log.info("ISL start received — wire up your ISL module here")
-
-            elif msg_type == "stop_isl":
-                # TODO: stop your ISL translation process here
-                await session.send_status("isl", "idle")
-
-            else:
-                log.warning("Unknown message type: %r", msg_type)
+            if   t == "start_speech": await session.handle_start_speech()
+            elif t == "stop_speech":  await session.handle_stop_speech()
+            elif t == "start_isl":    await session.handle_start_isl()
+            elif t == "stop_isl":     await session.handle_stop_isl()
+            else: log.warning("Unknown message type: %r", t)
 
     except websockets.ConnectionClosedOK:
-        log.info("Client disconnected cleanly: %s:%s", *remote)
+        log.info("Client disconnected cleanly")
     except websockets.ConnectionClosedError as exc:
         log.warning("Client disconnected with error: %s", exc)
     finally:
         await session.cleanup()
-        log.info("Session cleaned up for %s:%s", *remote)
-
+        log.info("Session cleaned up")
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 async def main():
-    log.info("VAANI WebSocket server starting on ws://%s:%d/ws", HOST, PORT)
-    log.info("STT command: %s", " ".join(STT_COMMAND))
+    log.info("VAANI server  ws://%s:%d", HOST, PORT)
+    log.info("STT: %s", " ".join(STT_COMMAND))
+    log.info("ISL: %s", " ".join(ISL_COMMAND))
 
-    async with websockets.serve(handle, HOST, PORT, subprotocols=None):
-        log.info("Server ready — waiting for VAANI to connect…")
-        await asyncio.Future()          # run forever
-
+    async with websockets.serve(handle, HOST, PORT):
+        log.info("Ready — waiting for VAANI to connect…")
+        await asyncio.Future()
 
 if __name__ == "__main__":
     try:
