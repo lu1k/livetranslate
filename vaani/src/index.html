@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; connect-src ws: wss: http: https:;
+                 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+                 font-src 'self' https://fonts.gstatic.com;
+                 script-src 'self' 'unsafe-inline';">
+  <title>VAANI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0c0c0e;
+      --surface:   #111114;
+      --surface2:  #16161a;
+      --border:    #1e1e24;
+      --border-hi: #2a2a34;
+      --text:      #c8c8d4;
+      --muted:     #52525c;
+      --accent:    #00e5c8;
+      --accent-dim:#009e8c;
+      --danger:    #ff4d6d;
+      --warn:      #f5a623;
+      --mono:      'IBM Plex Mono', monospace;
+      --sans:      'IBM Plex Sans', sans-serif;
+      --titlebar-h: 38px;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.6;
+      user-select: none;
+    }
+
+    /* ── Subtle scanline texture ── */
+    body::after {
+      content: '';
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px, transparent 3px,
+        rgba(0,0,0,.04) 3px, rgba(0,0,0,.04) 4px
+      );
+      z-index: 9000;
+    }
+
+    /* ════════════════════════════════
+       CUSTOM TITLE BAR
+    ════════════════════════════════ */
+    #titlebar {
+      height: var(--titlebar-h);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 0 0 16px;
+      -webkit-app-region: drag; /* makes bar draggable */
+      position: relative;
+      z-index: 100;
+      flex-shrink: 0;
+    }
+
+    .titlebar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .titlebar-logo {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .22em;
+      color: var(--accent);
+    }
+    .titlebar-sub {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: .1em;
+    }
+
+    .titlebar-center {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ws-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background .4s;
+      flex-shrink: 0;
+    }
+    .ws-dot.connected  { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .ws-dot.connecting { background: var(--warn); animation: pulse 1s infinite; }
+    .ws-dot.error      { background: var(--danger); }
+    .ws-label { font-size: 10px; color: var(--muted); letter-spacing: .1em; }
+
+    /* Window control buttons — no drag */
+    .win-controls {
+      display: flex;
+      height: var(--titlebar-h);
+      -webkit-app-region: no-drag;
+    }
+    .win-btn {
+      width: 46px;
+      height: 100%;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background .15s, color .15s;
+    }
+    .win-btn:hover          { background: var(--border-hi); color: var(--text); }
+    .win-btn.close:hover    { background: var(--danger);    color: #fff; }
+
+    /* ════════════════════════════════
+       WS CONFIG BAR
+    ════════════════════════════════ */
+    #wsBar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+      -webkit-app-region: no-drag;
+    }
+    #wsBar label { font-size: 10px; color: var(--muted); letter-spacing: .1em; white-space: nowrap; }
+    #wsBar input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border-hi);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 5px 10px;
+      outline: none;
+      transition: border-color .2s;
+      -webkit-app-region: no-drag;
+    }
+    #wsBar input:focus { border-color: var(--accent); }
+    .btn-sm {
+      background: transparent;
+      border: 1px solid var(--border-hi);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 5px 13px;
+      cursor: pointer;
+      letter-spacing: .08em;
+      white-space: nowrap;
+      transition: border-color .2s, color .2s;
+      -webkit-app-region: no-drag;
+    }
+    .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ════════════════════════════════
+       LAYOUT
+    ════════════════════════════════ */
+    #appShell {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    #panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      flex: 1;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    section {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      overflow: hidden;
+      min-height: 0;
+    }
+    section:last-child { border-right: none; }
+
+    /* ── Section header ── */
+    .sec-head {
+      padding: 14px 24px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      background: var(--surface);
+    }
+    .sec-tag   { font-size: 9px; letter-spacing: .2em; color: var(--muted); text-transform: uppercase; margin-bottom: 2px; }
+    .sec-title { font-size: 14px; font-weight: 500; color: var(--text); }
+    .badge {
+      font-size: 9px; padding: 3px 8px;
+      border: 1px solid var(--border-hi);
+      color: var(--muted); letter-spacing: .08em;
+    }
+
+    /* ── Section body ── */
+    .sec-body {
+      flex: 1;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    /* ── Source toggle ── */
+    .source-toggle {
+      display: flex;
+      border: 1px solid var(--border-hi);
+    }
+    .source-toggle input[type=radio] { display: none; }
+    .source-toggle label {
+      flex: 1; text-align: center;
+      padding: 7px 0; cursor: pointer;
+      font-size: 11px; letter-spacing: .1em;
+      color: var(--muted);
+      border-right: 1px solid var(--border-hi);
+      transition: background .2s, color .2s;
+      user-select: none;
+    }
+    .source-toggle label:last-child { border-right: none; }
+    .source-toggle input[type=radio]:checked + label {
+      background: var(--accent); color: #000; font-weight: 500;
+    }
+
+    /* ── URL row ── */
+    .url-row { display: flex; gap: 8px; }
+    .url-row input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border-hi);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 7px 11px;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .url-row input:focus { border-color: var(--accent); }
+    .url-row input::placeholder { color: var(--muted); }
+
+    /* ── Mic area ── */
+    .mic-area {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 14px;
+      border: 1px solid var(--border-hi);
+      background: var(--bg);
+    }
+    .mic-ring {
+      width: 30px; height: 30px; border-radius: 50%;
+      border: 1px solid var(--border-hi);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; color: var(--muted);
+      transition: border-color .3s, color .3s, box-shadow .3s;
+      flex-shrink: 0;
+    }
+    .mic-ring.live {
+      border-color: var(--accent); color: var(--accent);
+      animation: mic-glow 1.2s ease-in-out infinite;
+    }
+    @keyframes mic-glow {
+      0%,100% { box-shadow: 0 0 6px rgba(0,229,200,.2); }
+      50%      { box-shadow: 0 0 18px rgba(0,229,200,.5); }
+    }
+    .mic-info { font-size: 11px; }
+    .mic-state { color: var(--text); display: block; }
+    .mic-sub   { color: var(--muted); }
+
+    /* ── Field label ── */
+    .field-label {
+      font-size: 9px; letter-spacing: .16em;
+      color: var(--muted); text-transform: uppercase;
+    }
+
+    /* ── Status row ── */
+    .status-row { display: flex; align-items: center; gap: 8px; }
+    .sdot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0;
+      transition: background .3s;
+    }
+    .sdot.on { background: var(--accent); box-shadow: 0 0 5px var(--accent); animation: pulse 1.1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .stext { font-size: 11px; color: var(--muted); }
+
+    /* ── Output box ── */
+    .output-box {
+      flex: 1;
+      min-height: 120px;
+      max-height: 260px;
+      background: var(--bg);
+      border: 1px solid var(--border-hi);
+      padding: 12px 14px;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      color: var(--text);
+      overflow-y: auto;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      word-break: break-word;
+      user-select: text;
+    }
+    .placeholder-text { color: var(--muted); }
+    .cursor {
+      display: inline-block; width: 7px; height: 13px;
+      background: var(--accent); vertical-align: middle;
+      margin-left: 2px; animation: blink .9s step-end infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* ── ISL output ── */
+    .isl-output {
+      flex: 1;
+      min-height: 160px;
+      background: var(--bg);
+      border: 1px solid var(--border-hi);
+      padding: 14px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      user-select: text;
+    }
+    .isl-entry {
+      display: flex; gap: 12px; align-items: flex-start;
+      opacity: 0; transform: translateY(6px);
+      animation: fadeUp .3s forwards;
+    }
+    @keyframes fadeUp { to { opacity:1; transform: translateY(0); } }
+    .isl-word {
+      font-size: 10px; color: var(--accent);
+      letter-spacing: .1em; min-width: 72px;
+      padding-top: 3px; flex-shrink: 0;
+    }
+    .isl-desc { font-size: 11.5px; color: var(--text); line-height: 1.7; }
+    .isl-empty {
+      color: var(--muted); font-size: 11px; margin: auto;
+      text-align: center; line-height: 2.2;
+    }
+
+    /* ── Info card ── */
+    .info-card {
+      border: 1px solid var(--border-hi);
+      background: var(--bg);
+      padding: 12px 16px;
+      display: flex; flex-direction: column; gap: 5px;
+    }
+    .info-card .ic-label { font-size: 9px; color: var(--muted); letter-spacing: .12em; }
+    .info-card .ic-value { font-size: 12px; color: var(--text); }
+    .info-card .ic-note  { font-size: 10.5px; color: var(--muted); margin-top: 4px; line-height: 1.6; }
+
+    /* ── Footer / start button ── */
+    .sec-foot {
+      padding: 12px 24px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+    .btn-start {
+      width: 100%; padding: 11px;
+      background: transparent;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 11px; font-weight: 500;
+      letter-spacing: .2em; text-transform: uppercase;
+      cursor: pointer;
+      position: relative; overflow: hidden;
+      transition: color .2s;
+    }
+    .btn-start::before {
+      content: ''; position: absolute; inset: 0;
+      background: var(--accent);
+      transform: translateX(-100%);
+      transition: transform .22s ease; z-index: 0;
+    }
+    .btn-start:hover::before { transform: translateX(0); }
+    .btn-start:hover { color: #000; }
+    .btn-start span { position: relative; z-index: 1; }
+    .btn-start.running { border-color: var(--danger); color: var(--danger); }
+    .btn-start.running::before { background: var(--danger); }
+    .btn-start.running:hover { color: #fff; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 2px; }
+
+    .hidden { display: none !important; }
+
+    /* ── Responsive: stack on narrow ── */
+    @media (max-width: 700px) {
+      #panels { grid-template-columns: 1fr; overflow-y: auto; }
+      section { border-right: none; border-bottom: 1px solid var(--border); min-height: 50vh; }
+    }
+  </style>
+</head>
+<body>
+<div id="appShell">
+
+  <!-- ══ CUSTOM TITLE BAR ══════════════════════════ -->
+  <div id="titlebar">
+    <div class="titlebar-left">
+      <span class="titlebar-logo">VAANI</span>
+      <span class="titlebar-sub">Speech &amp; ISL Translation</span>
+    </div>
+
+    <div class="titlebar-center">
+      <div class="ws-dot" id="wsDot"></div>
+      <span class="ws-label" id="wsLabel">DISCONNECTED</span>
+    </div>
+
+    <div class="win-controls">
+      <button class="win-btn" id="btnMin" title="Minimise">&#8722;</button>
+      <button class="win-btn" id="btnMax" title="Maximise">&#9633;</button>
+      <button class="win-btn close" id="btnClose" title="Close">&#10005;</button>
+    </div>
+  </div>
+
+  <!-- ══ WS CONFIG BAR ═══════════════════════════ -->
+  <div id="wsBar">
+    <label>WS ENDPOINT</label>
+    <input type="text" id="wsUrl" value="ws://localhost:8000/ws" spellcheck="false"/>
+    <button class="btn-sm" id="btnConnect">CONNECT</button>
+    <button class="btn-sm" id="btnDisconnect">DISCONNECT</button>
+  </div>
+
+  <!-- ══ MAIN PANELS ══════════════════════════════ -->
+  <div id="panels">
+
+    <!-- ─── SPEECH SECTION ─────────────────────── -->
+    <section>
+      <div class="sec-head">
+        <div>
+          <div class="sec-tag">Module 01</div>
+          <div class="sec-title">Speech Translation</div>
+        </div>
+        <div class="badge">AUDIO → TEXT</div>
+      </div>
+
+      <div class="sec-body">
+        <!-- Source toggle -->
+        <div>
+          <div class="field-label" style="margin-bottom:7px">Input Source</div>
+          <div class="source-toggle">
+            <input type="radio" name="source" id="srcMic" value="mic" checked/>
+            <label for="srcMic">⬤&nbsp; Microphone</label>
+            <input type="radio" name="source" id="srcUrl" value="url"/>
+            <label for="srcUrl">⬡&nbsp; Stream URL</label>
+          </div>
+        </div>
+
+        <!-- Mic display -->
+        <div class="mic-area" id="micArea">
+          <div class="mic-ring" id="micRing">🎙</div>
+          <div class="mic-info">
+            <span class="mic-state" id="micState">Idle</span>
+            <span class="mic-sub">Default system microphone</span>
+          </div>
+        </div>
+
+        <!-- URL input -->
+        <div class="url-row hidden" id="urlArea">
+          <input type="text" id="streamUrl"
+                 placeholder="https://stream.example.com/audio" spellcheck="false"/>
+        </div>
+
+        <!-- Status -->
+        <div class="status-row">
+          <div class="sdot" id="spDot"></div>
+          <div class="stext" id="spStatus">Waiting to start…</div>
+        </div>
+
+        <!-- Output -->
+        <div class="field-label">Transcription Output</div>
+        <div class="output-box" id="spOutput">
+          <span class="placeholder-text" id="spPlaceholder">Transcribed speech will appear here in real-time…</span>
+        </div>
+      </div>
+
+      <div class="sec-foot">
+        <button class="btn-start" id="btnSpeech">
+          <span id="btnSpLabel">▶&nbsp;&nbsp;Start Translation</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- ─── ISL SECTION ────────────────────────── -->
+    <section>
+      <div class="sec-head">
+        <div>
+          <div class="sec-tag">Module 02</div>
+          <div class="sec-title">Sign Language Translation</div>
+        </div>
+        <div class="badge">ISL · TEXT DESCRIPTION</div>
+      </div>
+
+      <div class="sec-body">
+        <!-- Info card -->
+        <div class="info-card">
+          <div class="ic-label">MODE</div>
+          <div class="ic-value">Indian Sign Language (ISL) — Text Description Output</div>
+          <div class="ic-note">
+            Receives translated speech tokens via WebSocket and outputs
+            ISL gesture descriptions per word or phrase.
+          </div>
+        </div>
+
+        <!-- Status -->
+        <div class="status-row">
+          <div class="sdot" id="islDot"></div>
+          <div class="stext" id="islStatus">Waiting to start…</div>
+        </div>
+
+        <!-- ISL output -->
+        <div class="field-label">ISL Gesture Descriptions</div>
+        <div class="isl-output" id="islOutput">
+          <div class="isl-empty" id="islEmpty">
+            ISL sign descriptions will appear here<br/>
+            <span style="font-size:10px">word · gesture · movement</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec-foot">
+        <button class="btn-start" id="btnIsl">
+          <span id="btnIslLabel">▶&nbsp;&nbsp;Start Translation</span>
+        </button>
+      </div>
+    </section>
+
+  </div><!-- #panels -->
+</div><!-- #appShell -->
+
+<script src="renderer.js"></script>
+</body>
+</html>

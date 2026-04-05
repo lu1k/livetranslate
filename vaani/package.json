@@ -1,0 +1,49 @@
+{
+  "name": "vaani",
+  "version": "1.0.0",
+  "description": "Speech & ISL Translation Desktop Application",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "keywords": [
+    "speech",
+    "isl",
+    "translation",
+    "electron"
+  ],
+  "author": "VAANI",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^41.1.1",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.vaani.app",
+    "productName": "VAANI",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
+  }
+}
