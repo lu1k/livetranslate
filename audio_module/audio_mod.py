@@ -9,7 +9,7 @@ class AudioStream:
         sample_rate=44100,
         channels=1,
         dtype='int16',
-        blocksize=512,
+        blocksize=1024,
         target_sample_rate=None,
         processor=None
     ):
@@ -24,7 +24,7 @@ class AudioStream:
         self.target_sample_rate = target_sample_rate
         self.processor = processor
 
-        self._queue = queue.Queue()
+        self._queue = queue.Queue(maxsize=50)
         self._running = False
         self._thread = None
 

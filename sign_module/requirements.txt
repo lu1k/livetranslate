@@ -1,7 +1,4 @@
-opencv-python
-numpy
-mediapipe
-easyocr
-googletrans==4.0.0-rc1
-SpeechRecognition
-tensorflow
+opencv-python>=4.8.0
+mediapipe==0.10.21
+scikit-learn>=1.2.0
+websockets>=11.0

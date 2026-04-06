@@ -40,10 +40,10 @@ HOST = "localhost"
 PORT = 8000
 
 # ❶ Point at your STT script
-STT_COMMAND = ["python", "-u", "stt.py"]
+STT_COMMAND = ["python", "-u", r"C:\project\livetranslate04\livetranslate\main.py"]
 
 # ❷ Point at your ISL script
-ISL_COMMAND = ["python", "-u", "isl.py"]
+ISL_COMMAND = ["python", "-u", r"C:\project\livetranslate04\livetranslate\sign_module\isl_stdout.py"]
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 
@@ -231,7 +231,7 @@ class Session:
 
 async def handle(ws: WebSocketServerProtocol):
     remote = ws.remote_address
-    log.info("Client connected: %s:%s", *remote)
+    log.info("Client connected: %s:%s", remote[0], remote[1])
     session = Session(ws)
 
     try:
